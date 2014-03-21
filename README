@@ -1,0 +1,57 @@
+krakendb
+========
+
+This is a quickly written utility that generates a binary tree containing a
+summation of the nodes below it and a verifier hash, similar to the one
+described by gmaxwell (https://iwilcox.me.uk/v/nofrac).
+
+Usage: krakendb <dbname> [key=verifier key] [<position>|<hash>|root|dump|gendata]
+
+When run, if the db file <dbname>.tree does not exist, it will attempt to
+use <dbname>.data to generate <dbname>.tree.  For testing purposes, the
+gendata option can be used to generate a test <dbname>.data file.
+
+Generation of the tree requires a verifier key, set with the key=verifier-key
+option.  The nodes of the tree are hashed using:
+
+Leaf nodes:
+
+hash = SHA256(SHA256(code || ":" || value))
+
+, where code is a random salt code for the account to make brute forcing of
+value more difficult and value is the value of the account.  code and value
+are known to the account holder but not to anyone else so that thee user can
+verify that their node hash is indeed what is claimed.
+
+Interior nodes:
+
+hash = SHA256(SHA256(left.value + right.value) || verifykey || left.hash || right.hash) || verifykey)
+
+The verifykey (set with the key option) is used to make it more difficult to
+brute force to determine the left + right values.
+
+After the tree has been generated, the key option is no longer necessary and
+options to dump the entire tree, query for the root node, or query for all
+the nodes between the leaf node and the root node are available.  Note that
+when querying by leaf node hash value, the hashes are not guaranteed to be
+unique and only the first entry is returned.
+
+
+Although what gmaxwell describes works, it will only work if the tree was
+generated honestly, as there is no practical way of verifying that it was
+correctly generated since a key part of proving that the nodes are correctly
+hashed (the value of each node) is not provided.  Combined with the fact
+that the entire tree isn't public and a lot of samples from different
+accounts are required to find adjacent nodes in which one can attempt to
+brute force the values with in order to verify that a single node was not
+using faulty math.  Even if all the nodes were hashed correctly, it'd be
+difficult to determine if there were leaf nodes with negative values in
+them to suppress the final tally at the root.
+
+In order to protect privacy (both the business and its users), a third party
+is necessary to ensure that the tree is correctly being generated with the
+proper math at every node, and that there aren't any negative values at the
+leaf nodes designed to deflate the value of the root.  Note that there may
+sometimes be negative values for some accounts for various reasons, but
+there should not be a lot of negative amounts and any that have a large
+negative amount require further investigation as to the reason for it.
