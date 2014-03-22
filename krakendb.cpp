@@ -33,12 +33,12 @@
 
 enum { MODE_ROOT, MODE_POSITION, MODE_HASH, MODE_DUMP, MODE_GENTESTDATA };
 
-void ShowHex(const unsigned char* data, size_t datalen)
+void ShowHex(const unsigned char* data, size_t datalen, bool newline)
 {
 	int i;
 	for(i=0; i<datalen; ++i)
-		fprintf(stdout, "%02x%s", data[i], 31==(i&31) ? "\n" : "");
-	if((i&31)) printf("\n");
+		fprintf(stdout, "%02x%s", data[i], (newline && 31==(i&31)) ? "\n" : "");
+	if(newline && (i&31)) printf("\n");
 }
 
 bool HexData(const char* hex, unsigned char* data, size_t maxlen)
@@ -108,7 +108,7 @@ int main(int argc, char* argv[])
 	};
 	std::vector<node_t> nodes;
 	std::vector<node_t>::const_iterator it;
-	int idx, pos;
+	int idx, cnt, pos;
 	int mode = MODE_ROOT;
 	char *ptr;
 	DB* db;
@@ -164,9 +164,15 @@ int main(int argc, char* argv[])
 	case MODE_HASH:
 		if(db->GetNodes(hash, nodes)) {
 			idx = 0;
-			for(it=nodes.begin(); it!=nodes.end(); ++it) {
-				fprintf(stdout, "%d: ", idx++);
-				ShowHex(it->hash, sizeof(it->hash));
+			for(idx=0,it=nodes.begin(); idx<nodes.size(); idx+=2) {
+				fprintf(stdout, "%d: ", idx/2);
+				if(idx+1<nodes.size()) {
+					ShowHex(it->hash, sizeof(it->hash), false);
+					++it;
+					fprintf(stdout, " / ");
+				}
+				ShowHex(it->hash, sizeof(it->hash), true);
+				++it;
 			}
 		} else
 			fprintf(stderr, "Hash not found\n");
@@ -175,9 +181,15 @@ int main(int argc, char* argv[])
 	case MODE_POSITION:
 		if(db->GetNodes(pos, nodes)) {
 			idx = 0;
-			for(it=nodes.begin(); it!=nodes.end(); ++it) {
-				fprintf(stdout, "%d: ", idx++);
-				ShowHex(it->hash, sizeof(it->hash));
+			for(idx=0,it=nodes.begin(); idx<nodes.size(); idx+=2) {
+				fprintf(stdout, "%d: ", idx/2);
+				if(idx+1<nodes.size()) {
+					ShowHex(it->hash, sizeof(it->hash), false);
+					++it;
+					fprintf(stdout, " / ");
+				}
+				ShowHex(it->hash, sizeof(it->hash), true);
+				++it;
 			}
 		} else
 			fprintf(stderr, "Error reading tree\n");
@@ -186,11 +198,11 @@ int main(int argc, char* argv[])
 	case MODE_ROOT:
 		if(db->GetRoot(nodes)) {
 			fprintf(stdout, "Root %ld: ", nodes[2].data.value);
-			ShowHex(nodes[2].hash, sizeof(nodes[2].hash));
-			fprintf(stdout, "Left: ");
-			ShowHex(nodes[0].hash, sizeof(nodes[0].hash));
-			fprintf(stdout, "Right: ");
-			ShowHex(nodes[1].hash, sizeof(nodes[1].hash));
+			ShowHex(nodes[2].hash, sizeof(nodes[2].hash), true);
+			fprintf(stdout, "Hashes: ");
+			ShowHex(nodes[0].hash, sizeof(nodes[0].hash), false);
+			fprintf(stdout, " / ");
+			ShowHex(nodes[1].hash, sizeof(nodes[1].hash), true);
 		} else
 			fprintf(stderr, "Error reading tree\n");
 

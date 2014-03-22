@@ -30,12 +30,14 @@
 #include <string.h>
 #include <unistd.h>
 #include <openssl/sha.h>
+#include <openssl/evp.h>
+#include <openssl/hmac.h>
 #include "db.h"
 
 #define DATAHEADER	"KADD"
 #define TREEHEADER	"KADT"
 
-void ShowHex(const unsigned char* data, size_t datalen);
+void ShowHex(const unsigned char* data, size_t datalen, bool newline);
 
 DB::DB(const char* dbname, const char* verifykey): fd_(NULL), numRecords_(0)
 {
@@ -107,7 +109,7 @@ bool DB::Dump()
 			return false;
 
 		for(i=0; i<len; ++i)
-			ShowHex(nodes[i].hash, sizeof(nodes[i].hash));
+			ShowHex(nodes[i].hash, sizeof(nodes[i].hash), true);
 	}
 	return true;
 }
@@ -132,8 +134,9 @@ bool DB::GetRoot(std::vector<node_t>& nodes)
 
 bool DB::GetNodes(int pos, std::vector<node_t>& nodes)
 {
-	node_t node;
+	node_t node[2];
 	unsigned int depthpos, depthlen;
+	int recs;
 
 	if(!fd_ || pos<0 || pos>=numRecords_) return false;
 
@@ -141,12 +144,15 @@ bool DB::GetNodes(int pos, std::vector<node_t>& nodes)
 	depthpos = 0;
 	nodes.clear();
 	while(depthlen>0) {
-		if(fseek(fd_, (depthpos + pos) * sizeof(node) + sizeof(dbheader_t), SEEK_SET)<0)
+		if(fseek(fd_, ((depthpos + (pos & ~1))) * sizeof(*node) + sizeof(dbheader_t), SEEK_SET)<0)
 			return false;
-		if(1!=fread(&node, sizeof(node), 1, fd_))
+		recs = depthlen>1 ? 2 : 1;
+		if(recs!=fread(node, sizeof(*node), recs, fd_))
 			return false;
 
-		nodes.push_back(node);
+		nodes.push_back(node[0]);
+		if(recs>1)
+			nodes.push_back(node[1]);
 		pos = pos / 2;
 		depthpos += depthlen;
 		depthlen = depthlen / 2;
@@ -285,8 +291,15 @@ fail:
 
 unsigned long DB::getDataCode(int datapos) const
 {
-	// NOTE: this should be updated to generate/retrieve the user's data code
-	return 0;
+	// NOTE: this can be changed to a different method of generation or to retrieve the code from a db
+	uint256_t hash;
+	unsigned int len;
+
+	if(!verifykey_) return 0;
+
+	// perform HMAC(verifykey, datapos)
+	HMAC(EVP_sha256(), verifykey_, verifykeylen_, (unsigned char*)&datapos, sizeof(datapos), hash, &len);
+	return ((unsigned long*)hash)[1];
 }
 
 void DB::hashData(node_t& node, int pos) const
@@ -306,17 +319,10 @@ void DB::hashNode(const node_t& node1, const node_t& node2, node_t& noderes) con
 {
 	SHA256_CTX ctx;
 
-	// perform SHA256(SHA256(LE(node1.value + node2.value) || verifykey || node1.hash || node2.hash) || verifykey)
+	// perform SHA256(node1.hash || node2.hash)
 	noderes.data.value = node1.data.value + node2.data.value;
 	SHA256_Init(&ctx);
-	SHA256_Update(&ctx, &noderes.data.value, sizeof(noderes.data.value));	// assumed to be little-endian
-	if(verifykeylen_>0) SHA256_Update(&ctx, verifykey_, verifykeylen_);
 	SHA256_Update(&ctx, node1.hash, sizeof(node1.hash));
 	SHA256_Update(&ctx, node2.hash, sizeof(node2.hash));
-	SHA256_Final(noderes.hash, &ctx);
-
-	SHA256_Init(&ctx);
-	SHA256_Update(&ctx, noderes.hash, sizeof(noderes.hash));
-	if(verifykeylen_>0) SHA256_Update(&ctx, verifykey_, verifykeylen_);
 	SHA256_Final(noderes.hash, &ctx);
 }
