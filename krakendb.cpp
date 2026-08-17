@@ -108,14 +108,14 @@ int main(int argc, char* argv[])
 	};
 	std::vector<node_t> nodes;
 	std::vector<node_t>::const_iterator it;
-	int idx, cnt, pos;
+	int idx, pos;
 	int mode = MODE_ROOT;
 	char *ptr;
 	DB* db;
 
 	if(argc<2) {
 		fprintf(stderr, "Usage: %s <dbname> [key=verifier key] [<position>|<hash>|root|dump|gendata]\n", argv[0]);
-		return 0;
+		return 2;
 	}
 
 	dbname = argv[1];
@@ -132,33 +132,37 @@ int main(int argc, char* argv[])
 		} else if(sizeof(uint256_t)*2==strlen(argv[idx])) {
 			if(!HexData(argv[idx], buf, sizeof(buf))) {
 				fprintf(stderr, "Invalid hash value: %s\n", argv[idx]);
-				return 0;
+				return 2;
 			}
 			mode = MODE_HASH;
 		} else if(argv[idx][0]>='0' && argv[idx][0]<='9') {
 			pos = strtol(argv[idx], &ptr, 10);
 			if(ptr && *ptr) {
 				fprintf(stderr, "Invalid position value: %s\n", argv[idx]);
-				return 0;
+				return 2;
 			}
 			mode = MODE_POSITION;
 		} else {
 			fprintf(stderr, "Unknown option: %s\n", argv[idx]);
-			return 0;
+			return 2;
 		}
 	}
 
 	if(MODE_GENTESTDATA==mode) {
-		if(!GenTestData(dbname))
-			fprintf(stderr, "Error generating data\n");
-	}
+           if(!GenTestData(dbname)) {
+                   fprintf(stderr, "Error generating data\n");
+                   return 1;
+           }
+   }
 
 	db = new DB(dbname, verifykey);
 	if(!db->Open()) {
 		fprintf(stderr, "Open DB failed\n");
 		delete(db);
-		return 0;
+		return 1;
 	}
+
+	int exit_code = 0;
 
 	switch(mode) {
 	case MODE_HASH:
@@ -174,8 +178,10 @@ int main(int argc, char* argv[])
 				ShowHex(it->hash, sizeof(it->hash), true);
 				++it;
 			}
-		} else
-			fprintf(stderr, "Hash not found\n");
+		} else {
+                   fprintf(stderr, "Hash not found\n");
+                   exit_code = 1;
+           }
 
 		break;
 	case MODE_POSITION:
@@ -191,8 +197,10 @@ int main(int argc, char* argv[])
 				ShowHex(it->hash, sizeof(it->hash), true);
 				++it;
 			}
-		} else
-			fprintf(stderr, "Error reading tree\n");
+		} else {
+                   fprintf(stderr, "Error reading tree\n");
+                   exit_code = 1;
+           }
 
 		break;
 	case MODE_ROOT:
@@ -203,15 +211,19 @@ int main(int argc, char* argv[])
 			ShowHex(nodes[0].hash, sizeof(nodes[0].hash), false);
 			fprintf(stdout, " / ");
 			ShowHex(nodes[1].hash, sizeof(nodes[1].hash), true);
-		} else
-			fprintf(stderr, "Error reading tree\n");
+		} else {
+                   fprintf(stderr, "Error reading tree\n");
+                   exit_code = 1;
+           }
 
 		break;
 	case MODE_DUMP:
-		if(!db->Dump())
-			fprintf(stderr, "Error reading tree\n");
+		if(!db->Dump()) {
+                   fprintf(stderr, "Error reading tree\n");
+                   exit_code = 1;
+           }
 		break;
 	}
-
-	return 1;
+   delete(db);
+   return exit_code;
 }
